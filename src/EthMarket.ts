@@ -5,8 +5,8 @@ export interface TokenBalances {
 }
 
 export interface MultipleCallData {
-  targets: Array<string>
-  data: Array<string>
+  targets: string[]
+  data: string[]
 }
 
 export interface CallDetails {
@@ -16,7 +16,7 @@ export interface CallDetails {
 }
 
 export abstract class EthMarket {
-  get tokens(): Array<string> {
+  get tokens(): string[] {
     return this._tokens;
   }
 
@@ -28,11 +28,11 @@ export abstract class EthMarket {
     return this._protocol;
   }
 
-  protected readonly _tokens: Array<string>;
+  protected readonly _tokens: string[];
   protected readonly _marketAddress: string;
   protected readonly _protocol: string;
 
-  constructor(marketAddress: string, tokens: Array<string>, protocol: string) {
+  constructor(marketAddress: string, tokens: string[], protocol: string) {
     this._marketAddress = marketAddress;
     this._tokens = tokens
     this._protocol = protocol;

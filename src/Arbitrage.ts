@@ -13,7 +13,7 @@ export interface CrossedMarketDetails {
   sellToMarket: EthMarket,
 }
 
-export type MarketsByToken = { [tokenAddress: string]: Array<EthMarket> }
+export type MarketsByToken = { [tokenAddress: string]: EthMarket[] }
 
 // TODO: implement binary search (assuming linear/exponential global maximum profitability)
 const TEST_VOLUMES = [
@@ -28,7 +28,7 @@ const TEST_VOLUMES = [
   ETHER.mul(10),
 ]
 
-export function getBestCrossedMarket(crossedMarkets: Array<EthMarket>[], tokenAddress: string): CrossedMarketDetails | undefined {
+export function getBestCrossedMarket(crossedMarkets: EthMarket[][], tokenAddress: string): CrossedMarketDetails | undefined {
   let bestCrossedMarket: CrossedMarketDetails | undefined = undefined;
   for (const crossedMarket of crossedMarkets) {
     const sellToMarket = crossedMarket[0]
@@ -67,8 +67,11 @@ export function getBestCrossedMarket(crossedMarkets: Array<EthMarket>[], tokenAd
 }
 
 export class Arbitrage {
+  // Send bundles to Flashbots using this
   private flashbotsProvider: FlashbotsBundleProvider;
+  // Contract we're interacting with
   private bundleExecutorContract: Contract;
+  // Wallet that is actaully signing the transaction
   private executorWallet: Wallet;
 
   constructor(executorWallet: Wallet, flashbotsProvider: FlashbotsBundleProvider, bundleExecutorContract: Contract) {
@@ -91,8 +94,8 @@ export class Arbitrage {
   }
 
 
-  async evaluateMarkets(marketsByToken: MarketsByToken): Promise<Array<CrossedMarketDetails>> {
-    const bestCrossedMarkets = new Array<CrossedMarketDetails>()
+  async evaluateMarkets(marketsByToken: MarketsByToken): Promise<CrossedMarketDetails[]> {
+    const bestCrossedMarkets: CrossedMarketDetails[] = [];
 
     for (const tokenAddress in marketsByToken) {
       const markets = marketsByToken[tokenAddress]
@@ -104,7 +107,7 @@ export class Arbitrage {
         }
       });
 
-      const crossedMarkets = new Array<Array<EthMarket>>()
+      const crossedMarkets: EthMarket[][] = [];
       for (const pricedMarket of pricedMarkets) {
         _.forEach(pricedMarkets, pm => {
           if (pm.sellTokenPrice.gt(pricedMarket.buyTokenPrice)) {
@@ -131,8 +134,8 @@ export class Arbitrage {
       const inter = bestCrossedMarket.buyFromMarket.getTokensOut(WETH_ADDRESS, bestCrossedMarket.tokenAddress, bestCrossedMarket.volume)
       const sellCallData = await bestCrossedMarket.sellToMarket.sellTokens(bestCrossedMarket.tokenAddress, inter, this.bundleExecutorContract.address);
 
-      const targets: Array<string> = [...buyCalls.targets, bestCrossedMarket.sellToMarket.marketAddress]
-      const payloads: Array<string> = [...buyCalls.data, sellCallData]
+      const targets: string[] = [...buyCalls.targets, bestCrossedMarket.sellToMarket.marketAddress]
+      const payloads: string[] = [...buyCalls.data, sellCallData]
       console.log({targets, payloads})
       const minerReward = bestCrossedMarket.profit.mul(minerRewardPercentage).div(100);
       const transaction = await this.bundleExecutorContract.populateTransaction.uniswapWeth(bestCrossedMarket.volume, minerReward, targets, payloads, {

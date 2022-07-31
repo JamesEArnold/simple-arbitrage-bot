@@ -18,7 +18,7 @@ const blacklistTokens = [
 
 interface GroupedMarkets {
   marketsByToken: MarketsByToken;
-  allMarketPairs: Array<UniswappyV2EthPair>;
+  allMarketPairs: UniswappyV2EthPair[];
 }
 
 export class UniswappyV2EthPair extends EthMarket {
@@ -34,7 +34,7 @@ export class UniswappyV2EthPair extends EthMarket {
     return tokenAddress in this._tokenBalances
   }
 
-  async prepareReceive(tokenAddress: string, amountIn: BigNumber): Promise<Array<CallDetails>> {
+  async prepareReceive(tokenAddress: string, amountIn: BigNumber): Promise<CallDetails[]> {
     if (this._tokenBalances[tokenAddress] === undefined) {
       throw new Error(`Market does not operate on token ${tokenAddress}`)
     }
@@ -45,24 +45,35 @@ export class UniswappyV2EthPair extends EthMarket {
     return []
   }
 
-  static async getUniswappyMarkets(provider: providers.JsonRpcProvider, factoryAddress: string): Promise<Array<UniswappyV2EthPair>> {
+  // Takes in each Factory address, 
+  static async getUniswappyMarkets(provider: providers.JsonRpcProvider, factoryAddress: string): Promise<UniswappyV2EthPair[]> {
+    // This UNISWAP_LOOKUP contract is a special contract created to query the factory contracts
+    // in batches compared to 1 request per pair.
     const uniswapQuery = new Contract(UNISWAP_LOOKUP_CONTRACT_ADDRESS, UNISWAP_QUERY_ABI, provider);
 
     const marketPairs = new Array<UniswappyV2EthPair>()
     for (let i = 0; i < BATCH_COUNT_LIMIT * UNISWAP_BATCH_SIZE; i += UNISWAP_BATCH_SIZE) {
       const pairs: Array<Array<string>> = (await uniswapQuery.functions.getPairsByIndexRange(factoryAddress, i, i + UNISWAP_BATCH_SIZE))[0];
       for (let i = 0; i < pairs.length; i++) {
+        // Pull a specific pair out of our result from the UniswapFlashQuery
         const pair = pairs[i];
+        // What is the address of the specific pair we're working with
         const marketAddress = pair[2];
         let tokenAddress: string;
 
+        // We're looking for pairs that contain WETH as one side of the 
+        // pair, so we'll filter out the others here.
+        // Why only WETH? We pay fees in WETH, and it's easier to pay fees out of profit.
         if (pair[0] === WETH_ADDRESS) {
           tokenAddress = pair[1]
         } else if (pair[1] === WETH_ADDRESS) {
           tokenAddress = pair[0]
         } else {
+          // If we don't have WETH on one side, restart our for loop
           continue;
         }
+        // If there's a pair that screws up your bot for whatever reason
+        // add it to the blacklist so you don't call it
         if (!blacklistTokens.includes(tokenAddress)) {
           const uniswappyV2EthPair = new UniswappyV2EthPair(marketAddress, [pair[0], pair[1]], "");
           marketPairs.push(uniswappyV2EthPair);
@@ -76,11 +87,13 @@ export class UniswappyV2EthPair extends EthMarket {
     return marketPairs
   }
 
-  static async getUniswapMarketsByToken(provider: providers.JsonRpcProvider, factoryAddresses: Array<string>): Promise<GroupedMarkets> {
-    const allPairs = await Promise.all(
+  static async getUniswapMarketsByToken(provider: providers.JsonRpcProvider, factoryAddresses: string[]): Promise<GroupedMarkets> {
+    // Take all of our Factory addresses, and in parallel execute a call
+    const allPairs: UniswappyV2EthPair[][] = await Promise.all(
       _.map(factoryAddresses, factoryAddress => UniswappyV2EthPair.getUniswappyMarkets(provider, factoryAddress))
     )
 
+    // Group the tokens with WETH as the position 0 address
     const marketsByTokenAll = _.chain(allPairs)
       .flatten()
       .groupBy(pair => pair.tokens[0] === WETH_ADDRESS ? pair.tokens[1] : pair.tokens[0])
@@ -93,9 +106,12 @@ export class UniswappyV2EthPair extends EthMarket {
       .flatten()
       .value()
 
+    // We have all these different pairs, and we need to have continuous
+    // data for every block.  We register that event listener here.
     await UniswappyV2EthPair.updateReserves(provider, allMarketPairs);
 
     const marketsByToken = _.chain(allMarketPairs)
+    // Filter out pairs that do not have >1 ETH in their balance
       .filter(pair => (pair.getBalance(WETH_ADDRESS).gt(ETHER)))
       .groupBy(pair => pair.tokens[0] === WETH_ADDRESS ? pair.tokens[1] : pair.tokens[0])
       .value()
@@ -106,11 +122,18 @@ export class UniswappyV2EthPair extends EthMarket {
     }
   }
 
-  static async updateReserves(provider: providers.JsonRpcProvider, allMarketPairs: Array<UniswappyV2EthPair>): Promise<void> {
-    const uniswapQuery = new Contract(UNISWAP_LOOKUP_CONTRACT_ADDRESS, UNISWAP_QUERY_ABI, provider);
-    const pairAddresses = allMarketPairs.map(marketPair => marketPair.marketAddress);
+  static async updateReserves(provider: providers.JsonRpcProvider, allMarketPairs: UniswappyV2EthPair[]): Promise<void> {
+    // Again, look at the special contract used to batch queries.  
+    const uniswapQuery: Contract = new Contract(UNISWAP_LOOKUP_CONTRACT_ADDRESS, UNISWAP_QUERY_ABI, provider);
+    // We make a simple object that has all of the addresses of the pairs
+    // we're interacting with
+    const pairAddresses: string[] = allMarketPairs.map(marketPair => marketPair.marketAddress);
+    // Let's see how many addresses we're looking at
     console.log("Updating markets, count:", pairAddresses.length)
-    const reserves: Array<Array<BigNumber>> = (await uniswapQuery.functions.getReservesByPairs(pairAddresses))[0];
+    // Get all of the reserves across all of our pairs
+    const reserves: BigNumber[][] = (await uniswapQuery.functions.getReservesByPairs(pairAddresses))[0];
+    // Loop through all of our market pairs and set the reserve balances internally
+    // so we can work with the data later on.
     for (let i = 0; i < allMarketPairs.length; i++) {
       const marketPair = allMarketPairs[i];
       const reserve = reserves[i]
@@ -124,11 +147,11 @@ export class UniswappyV2EthPair extends EthMarket {
     return balance;
   }
 
-  setReservesViaOrderedBalances(balances: Array<BigNumber>): void {
+  setReservesViaOrderedBalances(balances: BigNumber[]): void {
     this.setReservesViaMatchingArray(this._tokens, balances)
   }
 
-  setReservesViaMatchingArray(tokens: Array<string>, balances: Array<BigNumber>): void {
+  setReservesViaMatchingArray(tokens: string[], balances: BigNumber[]): void {
     const tokenBalances = _.zipObject(tokens, balances)
     if (!_.isEqual(this._tokenBalances, tokenBalances)) {
       this._tokenBalances = tokenBalances

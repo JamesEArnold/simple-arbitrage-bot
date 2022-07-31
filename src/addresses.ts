@@ -6,6 +6,11 @@ export const CRO_FACTORY_ADDRESS = "0x9DEB29c9a4c7A88a3C0257393b7f3335338D9A9D";
 export const ZEUS_FACTORY_ADDRESS = "0xbdda21dd8da31d5bee0c9bb886c044ebb9b8906a";
 export const LUA_FACTORY_ADDRESS = "0x0388c1e0f210abae597b7de712b9510c6c36c857";
 
+// These are all UniSwap V2 forks
+// The factory addresses are the contracts that actually deploy the 
+// pair contracts such as ETH/USDC.  We need to call getPair on the 
+// factory contracts to find the contract addresses of the pairs that
+// have been deployed by it.
 export const FACTORY_ADDRESSES = [
   CRO_FACTORY_ADDRESS,
   ZEUS_FACTORY_ADDRESS,
