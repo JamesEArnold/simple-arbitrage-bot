@@ -4,6 +4,15 @@ This repo adds educational comments to the code and some more explicit types.
 
 You can find the walkthrough of this code on [YouTube here](https://www.youtube.com/watch?v=wn8r674U1B4)
 
+General skeleton to arbitrage bot:
+- Request pairs from factory addresses
+-- Call for the balance of the pairs reserves
+--- Filter out pairs with less than 1 ETH
+- Register an event listener on each block
+-- On each new block, update the reserves of each market
+--- Find the best profit between markets for this particular block
+- Perform the arbitrage opportunity if it exists
+
 simple-arbitrage
 ================
 This repository contains a simple, mechanical system for discovering, evaluating, rating, and submitting arbitrage opportunities to the Flashbots bundle endpoint. This script is very unlikely to be profitable, as many users have access to it, and it is targeting well-known Ethereum opportunities.
