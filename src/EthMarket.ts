@@ -49,5 +49,5 @@ export abstract class EthMarket {
 
   abstract receiveDirectly(tokenAddress: string): boolean;
 
-  abstract prepareReceive(tokenAddress: string, amountIn: BigNumber): Promise<Array<CallDetails>>
+  abstract prepareReceive(tokenAddress: string, amountIn: BigNumber): Promise<CallDetails[]>
 }

@@ -78,12 +78,15 @@ async function main() {
   provider.on('block', async (blockNumber) => {
     // On each new block we need to update the state of reserves
     await UniswappyV2EthPair.updateReserves(provider, markets.allMarketPairs);
+    // This section of the code finds the best profit between two different markets
     const bestCrossedMarkets = await arbitrage.evaluateMarkets(markets.marketsByToken);
     if (bestCrossedMarkets.length === 0) {
       console.log("No crossed markets")
       return
     }
+    // Prints out some console logs to show us our arbs
     bestCrossedMarkets.forEach(Arbitrage.printCrossedMarket);
+    // Actually perform the arbitrage between the two markets
     arbitrage.takeCrossedMarkets(bestCrossedMarkets, blockNumber, MINER_REWARD_PERCENTAGE).then(healthcheck).catch(console.error)
   })
 }
